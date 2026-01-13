@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mein Trainingsplan - Lokal</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .accordion-content {
+            transition: all 0.3s ease-in-out;
+            max-height: 0;
+            opacity: 0;
+            overflow: hidden;
+        }
+        .accordion-content.active {
+            max-height: 1200px;
+            opacity: 1;
+            padding-bottom: 1rem;
+        }
+        input[type="number"] { font-size: 18px; } /* Verhindert Auto-Zoom auf iOS */
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen">
+
+    <div id="app" class="max-w-md mx-auto relative min-h-screen pb-24">
+        
+        <header class="bg-gradient-to-br from-indigo-600 to-blue-700 p-6 rounded-b-3xl shadow-lg sticky top-0 z-20">
+            <h1 id="view-title" class="text-2xl font-bold text-white">Mein Training</h1>
+            <p id="current-date" class="text-indigo-100 text-sm opacity-80"></p>
+        </header>
+
+        <main class="p-4">
+            <div id="tracker-view" class="space-y-3">
+                </div>
+
+            <div id="history-view" class="hidden space-y-4">
+                </div>
+        </main>
+
+        <div id="toast" class="fixed top-6 left-1/2 -translate-x-1/2 bg-green-500 text-white px-6 py-3 rounded-full shadow-2xl transform -translate-y-32 transition-transform duration-300 z-50 font-bold">
+            Gespeichert!
+        </div>
+
+        <div id="action-bar" class="fixed bottom-20 left-4 right-4 max-w-md mx-auto">
+            <button onclick="saveWorkout()" id="save-btn" class="w-full bg-indigo-500 hover:bg-indigo-600 text-white py-4 rounded-2xl shadow-xl font-bold text-lg flex items-center justify-center gap-2 transform active:scale-95 transition-all">
+                <i data-lucide="check-circle-2"></i> Training beenden
+            </button>
+        </div>
+
+        <nav class="fixed bottom-0 left-0 right-0 bg-slate-800 border-t border-slate-700 h-16 flex items-center justify-around z-40">
+            <button onclick="showView('tracker')" id="nav-tracker" class="flex flex-col items-center text-indigo-400">
+                <i data-lucide="dumbbell"></i>
+                <span class="text-[10px] uppercase font-bold mt-1">Training</span>
+            </button>
+            <button onclick="showView('history')" id="nav-history" class="flex flex-col items-center text-slate-500">
+                <i data-lucide="calendar"></i>
+                <span class="text-[10px] uppercase font-bold mt-1">Verlauf</span>
+            </button>
+        </nav>
+    </div>
+
+    <script>
+        // Übungen aus deinem PDF
+        const EXERCISES = [
+            "Brustpresse", "Butterfly", "Schulterpresse", "Rückenstrecker (M)", 
+            "Trizepsmaschine", "Latzug", "Rückenstrecker (Bank)", "Bizeps Curl", 
+            "Rudern", "Butterfly Reverse", "Bauchtrainer", "Beinbeuger", 
+            "Rumpfrotation", "Beinstrecker", "Beinpresse", "Adduktoren", 
+            "Abduktoren", "Gluteus"
+        ];
+
+        let currentWorkout = {}; // { "Übungsname": [{kg: 50, reps: 12}, ...] }
+
+        // Initialisierung
+        function init() {
+            document.getElementById('current-date').textContent = new Date().toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: 'long' });
+            renderTracker();
+            lucide.createIcons();
+        }
+
+        // Tracker Ansicht rendern
+        function renderTracker() {
+            const container = document.getElementById('tracker-view');
+            container.innerHTML = EXERCISES.map(ex => `
+                <div class="bg-slate-800 border border-slate-700 rounded-2xl overflow-hidden transition-all">
+                    <button onclick="toggleAccordion('${ex}')" class="w-full p-4 flex justify-between items-center active:bg-slate-700">
+                        <span class="font-semibold text-slate-200">${ex}</span>
+                        <div class="flex items-center gap-2">
+                            <span id="badge-${ex}" class="hidden bg-indigo-500 text-[10px] px-2 py-0.5 rounded-full font-bold">0</span>
+                            <i data-lucide="chevron-down" id="icon-${ex}" class="w-5 h-5 text-slate-500 transition-transform"></i>
+                        </div>
+                    </button>
+                    <div id="content-${ex}" class="accordion-content px-4">
+                        <div id="sets-${ex}" class="space-y-3 mb-4"></div>
+                        <button onclick="addSet('${ex}')" class="w-full py-2 border border-dashed border-slate-600 rounded-xl text-slate-400 text-sm flex items-center justify-center gap-1">
+                            <i data-lucide="plus" class="w-4 h-4"></i> Satz hinzufügen
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+            lucide.createIcons();
+        }
+
+        // Accordion Logik
+        function toggleAccordion(ex) {
+            const content = document.getElementById(`content-${ex}`);
+            const icon = document.getElementById(`icon-${ex}`);
+            const isActive = content.classList.contains('active');
+            
+            // Schließe andere (optional)
+            document.querySelectorAll('.accordion-content').forEach(c => c.classList.remove('active'));
+            document.querySelectorAll('[id^="icon-"]').forEach(i => i.style.transform = 'rotate(0deg)');
+
+            if (!isActive) {
+                content.classList.add('active');
+                icon.style.transform = 'rotate(180deg)';
+                if (!currentWorkout[ex]) addSet(ex); // Ersten Satz automatisch anlegen
+            }
+        }
+
+        // Satz hinzufügen
+        function addSet(ex) {
+            if (!currentWorkout[ex]) currentWorkout[ex] = [];
+            const lastSet = currentWorkout[ex][currentWorkout[ex].length - 1] || { kg: '', reps: '' };
+            currentWorkout[ex].push({ ...lastSet });
+            renderSets(ex);
+            updateBadge(ex);
+        }
+
+        function removeSet(ex, index) {
+            currentWorkout[ex].splice(index, 1);
+            if (currentWorkout[ex].length === 0) delete currentWorkout[ex];
+            renderSets(ex);
+            updateBadge(ex);
+        }
+
+        function updateValue(ex, index, field, val) {
+            currentWorkout[ex][index][field] = val;
+        }
+
+        function renderSets(ex) {
+            const container = document.getElementById(`sets-${ex}`);
+            const sets = currentWorkout[ex] || [];
+            container.innerHTML = sets.map((s, i) => `
+                <div class="grid grid-cols-7 gap-2 items-center">
+                    <span class="text-xs text-slate-500 font-bold text-center">${i + 1}</span>
+                    <input type="number" value="${s.kg}" oninput="updateValue('${ex}', ${i}, 'kg', this.value)" placeholder="kg" class="col-span-2 bg-slate-900 border border-slate-600 rounded-lg p-2 text-center focus:border-indigo-500 outline-none">
+                    <input type="number" value="${s.reps}" oninput="updateValue('${ex}', ${i}, 'reps', this.value)" placeholder="wdh" class="col-span-2 bg-slate-900 border border-slate-600 rounded-lg p-2 text-center focus:border-indigo-500 outline-none">
+                    <button onclick="removeSet('${ex}', ${i})" class="col-span-2 text-slate-500 flex justify-center"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                </div>
+            `).join('');
+            lucide.createIcons();
+        }
+
+        function updateBadge(ex) {
+            const badge = document.getElementById(`badge-${ex}`);
+            const count = currentWorkout[ex] ? currentWorkout[ex].length : 0;
+            badge.textContent = count;
+            badge.classList.toggle('hidden', count === 0);
+        }
+
+        // LocalStorage Funktionen
+        function saveWorkout() {
+            const hasData = Object.keys(currentWorkout).some(ex => currentWorkout[ex].some(s => s.kg || s.reps));
+            if (!hasData) return alert("Bitte trage Daten ein!");
+
+            const history = JSON.parse(localStorage.getItem('workout_history') || '[]');
+            const entry = {
+                id: Date.now(),
+                date: new Date().toLocaleDateString('de-DE'),
+                time: new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }),
+                data: currentWorkout
+            };
+
+            history.unshift(entry);
+            localStorage.setItem('workout_history', JSON.stringify(history));
+
+            // Feedback & Reset
+            showToast();
+            currentWorkout = {};
+            renderTracker();
+            showView('history');
+        }
+
+        function renderHistory() {
+            const history = JSON.parse(localStorage.getItem('workout_history') || '[]');
+            const container = document.getElementById('history-view');
+            
+            if (history.length === 0) {
+                container.innerHTML = `<div class="text-center py-20 text-slate-500">Noch keine Trainings gespeichert.</div>`;
+                return;
+            }
+
+            container.innerHTML = history.map(item => `
+                <div class="bg-slate-800 p-4 rounded-2xl border border-slate-700 shadow-sm relative">
+                    <button onclick="deleteEntry(${item.id})" class="absolute top-4 right-4 text-slate-600"><i data-lucide="x" class="w-4 h-4"></i></button>
+                    <div class="flex items-center gap-2 mb-3">
+                        <div class="w-10 h-10 bg-indigo-500/20 text-indigo-400 rounded-full flex items-center justify-center"><i data-lucide="calendar" class="w-5 h-5"></i></div>
+                        <div>
+                            <h4 class="font-bold text-sm text-white">${item.date}</h4>
+                            <p class="text-[10px] text-slate-400">${item.time} Uhr</p>
+                        </div>
+                    </div>
+                    <div class="space-y-1">
+                        ${Object.entries(item.data).map(([ex, sets]) => `
+                            <div class="flex justify-between text-xs border-b border-slate-700/50 py-1">
+                                <span class="text-slate-300">${ex}</span>
+                                <span class="font-mono text-indigo-400">${sets.length} Sätze • ${Math.max(...sets.map(s => s.kg || 0))}kg</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `).join('');
+            lucide.createIcons();
+        }
+
+        function deleteEntry(id) {
+            if(!confirm("Eintrag löschen?")) return;
+            let history = JSON.parse(localStorage.getItem('workout_history') || '[]');
+            history = history.filter(h => h.id !== id);
+            localStorage.setItem('workout_history', JSON.stringify(history));
+            renderHistory();
+        }
+
+        // Navigation
+        function showView(view) {
+            const tracker = document.getElementById('tracker-view');
+            const history = document.getElementById('history-view');
+            const navT = document.getElementById('nav-tracker');
+            const navH = document.getElementById('nav-history');
+            const saveBtn = document.getElementById('action-bar');
+            const title = document.getElementById('view-title');
+
+            if (view === 'tracker') {
+                tracker.classList.remove('hidden');
+                history.classList.add('hidden');
+                navT.classList.add('text-indigo-400'); navT.classList.remove('text-slate-500');
+                navH.classList.add('text-slate-500'); navH.classList.remove('text-indigo-400');
+                saveBtn.classList.remove('hidden');
+                title.textContent = "Mein Training";
+            } else {
+                tracker.classList.add('hidden');
+                history.classList.remove('hidden');
+                navH.classList.add('text-indigo-400'); navH.classList.remove('text-slate-500');
+                navT.classList.add('text-slate-500'); navT.classList.remove('text-indigo-400');
+                saveBtn.classList.add('hidden');
+                title.textContent = "Verlauf";
+                renderHistory();
+            }
+        }
+
+        function showToast() {
+            const t = document.getElementById('toast');
+            t.classList.remove('-translate-y-32');
+            setTimeout(() => t.classList.add('-translate-y-32'), 2500);
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
